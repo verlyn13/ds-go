@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -234,4 +237,107 @@ func (s *Scanner) UpdateFetchTime(repoPath string) {
 	s.mu.Unlock()
 	
 	s.saveFetchCache()
+}
+
+// CloneRepo clones a repository with the appropriate SSH configuration
+func CloneRepo(repoURL string, cfg *config.Config, targetPath string) error {
+	// Parse the repository URL to extract owner and repo name
+	// Support formats: 
+	// - https://github.com/owner/repo
+	// - github.com/owner/repo
+	// - owner/repo
+	// - git@github.com:owner/repo.git
+	
+	var owner, repoName string
+	
+	// Remove .git suffix if present
+	repoURL = strings.TrimSuffix(repoURL, ".git")
+	
+	// Parse different URL formats
+	if strings.Contains(repoURL, "github.com") {
+		// Handle full URLs
+		re := regexp.MustCompile(`github\.com[:/]([^/]+)/([^/]+)`)
+		matches := re.FindStringSubmatch(repoURL)
+		if len(matches) == 3 {
+			owner = matches[1]
+			repoName = matches[2]
+		}
+	} else if strings.Contains(repoURL, "/") {
+		// Handle owner/repo format
+		parts := strings.Split(repoURL, "/")
+		if len(parts) == 2 {
+			owner = parts[0]
+			repoName = parts[1]
+		}
+	}
+	
+	if owner == "" || repoName == "" {
+		return fmt.Errorf("invalid repository URL format: %s", repoURL)
+	}
+	
+	// Determine SSH host based on owner
+	sshHost := "github.com" // default
+	if account, ok := cfg.Accounts[owner]; ok {
+		sshHost = account.SSHHost
+	} else {
+		// Check if it's an organization
+		for org, host := range cfg.Orgs {
+			if org == owner {
+				sshHost = host
+				break
+			}
+		}
+	}
+	
+	// Build the SSH clone URL
+	cloneURL := fmt.Sprintf("git@%s:%s/%s.git", sshHost, owner, repoName)
+	
+	// Determine target directory
+	if targetPath == "" {
+		// Default to appropriate folder structure
+		targetDir := cfg.BaseDir
+		
+		// Check folder structure
+		for folder, accounts := range cfg.Folders {
+			for _, account := range accounts {
+				if account == owner {
+					targetDir = filepath.Join(cfg.BaseDir, folder)
+					break
+				}
+			}
+		}
+		
+		targetPath = filepath.Join(targetDir, repoName)
+	}
+	
+	// Ensure parent directory exists
+	parentDir := filepath.Dir(targetPath)
+	if err := os.MkdirAll(parentDir, 0755); err != nil {
+		return fmt.Errorf("creating parent directory: %w", err)
+	}
+	
+	// Execute git clone
+	fmt.Printf("Cloning %s/%s to %s\n", owner, repoName, targetPath)
+	fmt.Printf("Using SSH host: %s\n", sshHost)
+	
+	cmd := exec.Command("git", "clone", cloneURL, targetPath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git clone failed: %w", err)
+	}
+	
+	// Set up git config for the repository if we have email configured
+	if account, ok := cfg.Accounts[owner]; ok && account.Email != "" {
+		// Set user email for this repository
+		emailCmd := exec.Command("git", "config", "user.email", account.Email)
+		emailCmd.Dir = targetPath
+		if err := emailCmd.Run(); err != nil {
+			fmt.Printf("Warning: couldn't set email config: %v\n", err)
+		}
+	}
+	
+	fmt.Printf("✓ Successfully cloned %s/%s\n", owner, repoName)
+	return nil
 }

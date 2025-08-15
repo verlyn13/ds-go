@@ -1,10 +1,12 @@
 package config
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/adrg/xdg"
 	"gopkg.in/yaml.v3"
@@ -151,4 +153,100 @@ func defaultConfig() *Config {
 			"orgs":     {"happy-patterns", "ScopeTechGtHb", "AndroidScopeProjects"},
 		},
 	}
+}
+
+// InitInteractive creates or updates configuration interactively
+func InitInteractive(path string) error {
+	if path == "" {
+		path = DefaultPath()
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+	
+	// Check if config exists
+	var cfg *Config
+	if _, err := os.Stat(path); err == nil {
+		cfg, err = loadFromFile(path)
+		if err != nil {
+			fmt.Printf("Warning: existing config is invalid, creating new one: %v\n", err)
+			cfg = &Config{
+				Accounts: make(map[string]AccountConfig),
+				Orgs: make(map[string]string),
+				Folders: make(map[string][]string),
+			}
+		} else {
+			fmt.Println("Updating existing configuration...")
+		}
+	} else {
+		fmt.Println("Creating new configuration...")
+		cfg = &Config{
+			Accounts: make(map[string]AccountConfig),
+			Orgs: make(map[string]string),
+			Folders: make(map[string][]string),
+		}
+	}
+
+	// Get base directory
+	fmt.Printf("Base directory for repositories [%s]: ", defaultBaseDir())
+	baseDir, _ := reader.ReadString('\n')
+	baseDir = strings.TrimSpace(baseDir)
+	if baseDir == "" {
+		baseDir = defaultBaseDir()
+	}
+	cfg.BaseDir = baseDir
+
+	// Add/update accounts
+	fmt.Println("\nGitHub Account Configuration")
+	fmt.Println("(Press Enter with no username to finish)")
+	
+	for {
+		fmt.Print("\nGitHub username: ")
+		username, _ := reader.ReadString('\n')
+		username = strings.TrimSpace(username)
+		if username == "" {
+			break
+		}
+
+		// Get account type
+		fmt.Print("Account type (personal/work/school/org) [personal]: ")
+		accountType, _ := reader.ReadString('\n')
+		accountType = strings.TrimSpace(accountType)
+		if accountType == "" {
+			accountType = "personal"
+		}
+
+		// Get SSH host
+		fmt.Printf("SSH host config name [github-%s]: ", username)
+		sshHost, _ := reader.ReadString('\n')
+		sshHost = strings.TrimSpace(sshHost)
+		if sshHost == "" {
+			sshHost = fmt.Sprintf("github-%s", username)
+		}
+
+		// Get email
+		fmt.Printf("Git email for this account: ")
+		email, _ := reader.ReadString('\n')
+		email = strings.TrimSpace(email)
+
+		cfg.Accounts[username] = AccountConfig{
+			Type:    accountType,
+			SSHHost: sshHost,
+			Email:   email,
+		}
+
+		fmt.Printf("✓ Added account: %s\n", username)
+	}
+
+	// Save configuration
+	if err := cfg.Save(path); err != nil {
+		return fmt.Errorf("saving config: %w", err)
+	}
+
+	fmt.Printf("\n✓ Configuration saved to: %s\n", path)
+	fmt.Println("\nNext steps:")
+	fmt.Println("1. Ensure your SSH config has entries for each SSH host")
+	fmt.Println("2. Run 'ds scan' to discover repositories")
+	fmt.Println("3. Run 'ds status' to see repository status")
+	
+	return nil
 }
