@@ -1,0 +1,62 @@
+# Binaries
+ds
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+
+# Output of go coverage
+*.out
+coverage.html
+coverage.txt
+
+# Profiling
+*.prof
+cpu.prof
+mem.prof
+
+# Dependency directories
+vendor/
+
+# Go workspace
+go.work
+go.work.sum
+
+# Build directories
+dist/
+build/
+bin/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Config and cache files (local only)
+.ds-config.yaml
+.ds-index.json
+.ds-fetch-cache.json
+
+# GoReleaser
+dist/
+.goreleaser/
+
+# Environment files
+.env
+.env.local
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+
+# OS specific
+Thumbs.db
+desktop.ini

@@ -1,0 +1,88 @@
+version: 2
+
+project_name: ds
+
+before:
+  hooks:
+    - go mod tidy
+    - go mod download
+
+builds:
+  - id: ds
+    main: ./cmd/ds
+    binary: ds
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+    mod_timestamp: '{{ .CommitTimestamp }}'
+
+archives:
+  - id: default
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  version_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+
+brews:
+  - repository:
+      owner: verlyn13
+      name: homebrew-tap
+    folder: Formula
+    homepage: https://github.com/verlyn13/ds-go
+    description: Dead Simple repository manager - blazing fast Git status for multiple repos
+    license: MIT
+    install: |
+      bin.install "ds"
+    test: |
+      system "#{bin}/ds", "--version"
+
+scoops:
+  - repository:
+      owner: verlyn13
+      name: scoop-bucket
+    folder: bucket
+    homepage: https://github.com/verlyn13/ds-go
+    description: Dead Simple repository manager
+    license: MIT
+
+sboms:
+  - artifacts: archive
+
+signs:
+  - artifacts: checksum
+    args:
+      - "--batch"
+      - "--local-user"
+      - "{{ .Env.GPG_FINGERPRINT }}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
