@@ -165,13 +165,16 @@ func (g *Git) isGitRepo(path string) bool {
 
 // extractAccount extracts account name from remote URL
 func (g *Git) extractAccount(remoteURL string) string {
-	// Handle SSH URLs: git@github.com:user/repo.git
-	if strings.HasPrefix(remoteURL, "git@") {
+	// Handle custom SSH hosts: happy-patterns:owner/repo.git
+	// or standard SSH: git@github.com:owner/repo.git
+	if strings.Contains(remoteURL, ":") && !strings.HasPrefix(remoteURL, "http") {
 		parts := strings.Split(remoteURL, ":")
 		if len(parts) == 2 {
 			pathParts := strings.Split(parts[1], "/")
 			if len(pathParts) >= 1 {
-				return pathParts[0]
+				// Remove .git suffix if present
+				account := strings.TrimSuffix(pathParts[0], ".git")
+				return account
 			}
 		}
 	}

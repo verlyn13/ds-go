@@ -402,3 +402,110 @@ func CloneRepo(repoURL string, cfg *config.Config, targetPath string) error {
 	fmt.Printf("✓ Successfully cloned %s/%s\n", owner, repoName)
 	return nil
 }
+
+// OrganizeRepos reorganizes repositories into proper account/org folder structure
+func OrganizeRepos(repos []Repository, cfg *config.Config, dryRun, force bool) error {
+	var toMove []struct {
+		repo    Repository
+		oldPath string
+		newPath string
+	}
+	
+	// Determine which repos need to be moved
+	for _, repo := range repos {
+		// Skip if no folder name determined
+		if repo.FolderName == "" || repo.FolderName == "unknown" {
+			continue
+		}
+		
+		// Expected path
+		expectedPath := filepath.Join(cfg.BaseDir, repo.FolderName, repo.Name)
+		
+		// Skip if already in correct location
+		if repo.Path == expectedPath {
+			continue
+		}
+		
+		// Check if repo is in the root Projects directory (needs organizing)
+		if filepath.Dir(repo.Path) == cfg.BaseDir {
+			toMove = append(toMove, struct {
+				repo    Repository
+				oldPath string
+				newPath string
+			}{repo, repo.Path, expectedPath})
+		}
+	}
+	
+	if len(toMove) == 0 {
+		fmt.Println("✓ All repositories are already organized")
+		return nil
+	}
+	
+	// Display what will be moved
+	fmt.Printf("Found %d repositories to organize:\n\n", len(toMove))
+	
+	for _, m := range toMove {
+		relOld, _ := filepath.Rel(cfg.BaseDir, m.oldPath)
+		relNew, _ := filepath.Rel(cfg.BaseDir, m.newPath)
+		
+		if m.repo.IsOrg {
+			fmt.Printf("  [ORG] %s → %s\n", relOld, relNew)
+		} else {
+			fmt.Printf("  [USR] %s → %s\n", relOld, relNew)
+		}
+	}
+	
+	if dryRun {
+		fmt.Println("\n[DRY RUN] No files were moved. Remove --dry-run to apply changes.")
+		return nil
+	}
+	
+	// Confirm before moving
+	if !force {
+		fmt.Print("\nProceed with reorganization? [y/N]: ")
+		var response string
+		fmt.Scanln(&response)
+		if response != "y" && response != "Y" {
+			fmt.Println("Aborted")
+			return nil
+		}
+	}
+	
+	// Move repositories
+	var moved, failed int
+	for _, m := range toMove {
+		// Create target directory if needed
+		targetDir := filepath.Dir(m.newPath)
+		if err := os.MkdirAll(targetDir, 0755); err != nil {
+			fmt.Printf("  ✗ Failed to create directory %s: %v\n", targetDir, err)
+			failed++
+			continue
+		}
+		
+		// Check if destination exists
+		if _, err := os.Stat(m.newPath); err == nil && !force {
+			fmt.Printf("  ✗ Destination exists: %s (use --force to overwrite)\n", m.newPath)
+			failed++
+			continue
+		}
+		
+		// Move the repository
+		if err := os.Rename(m.oldPath, m.newPath); err != nil {
+			fmt.Printf("  ✗ Failed to move %s: %v\n", m.repo.Name, err)
+			failed++
+			continue
+		}
+		
+		relPath, _ := filepath.Rel(cfg.BaseDir, m.newPath)
+		fmt.Printf("  ✓ Moved to %s\n", relPath)
+		moved++
+	}
+	
+	fmt.Printf("\n✓ Reorganization complete: %d moved, %d failed\n", moved, failed)
+	
+	if moved > 0 {
+		fmt.Println("\nRun 'ds scan' to update the repository index")
+	}
+	
+	return nil
+}

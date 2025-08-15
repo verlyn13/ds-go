@@ -254,6 +254,30 @@ var configEditCmd = &cobra.Command{
 	},
 }
 
+var organizeCmd = &cobra.Command{
+	Use:   "organize",
+	Short: "Reorganize repositories into account/org folders",
+	Long:  `Moves repositories to the proper folder structure based on their remote URLs.
+Repositories will be organized as: ~/Projects/account/repo-name`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, err := config.Load(cfgFile)
+		if err != nil {
+			return fmt.Errorf("loading config: %w", err)
+		}
+		
+		scanner := scan.New(cfg, workerCount)
+		repos, err := scanner.Scan(scanPath)
+		if err != nil {
+			return fmt.Errorf("scanning repos: %w", err)
+		}
+		
+		dryRun, _ := cmd.Flags().GetBool("dry-run")
+		force, _ := cmd.Flags().GetBool("force")
+		
+		return scan.OrganizeRepos(repos, cfg, dryRun, force)
+	},
+}
+
 func init() {
 	cobra.OnInitialize(initConfig)
 
@@ -279,6 +303,9 @@ func init() {
 	configCmd.AddCommand(configViewCmd)
 	configCmd.AddCommand(configEditCmd)
 
+	organizeCmd.Flags().Bool("dry-run", false, "preview changes without moving files")
+	organizeCmd.Flags().Bool("force", false, "move repos even if destination exists")
+
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(fetchCmd)
 	rootCmd.AddCommand(scanCmd)
@@ -286,6 +313,7 @@ func init() {
 	rootCmd.AddCommand(cloneCmd)
 	rootCmd.AddCommand(cdCmd)
 	rootCmd.AddCommand(configCmd)
+	rootCmd.AddCommand(organizeCmd)
 }
 
 func initConfig() {
