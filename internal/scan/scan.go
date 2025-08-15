@@ -89,6 +89,9 @@ func (s *Scanner) Scan(searchPath string) ([]Repository, error) {
 				return nil
 			}
 			
+			// Enhance with organization info
+			s.enhanceRepoInfo(gitRepo)
+			
 			// Add fetch time from cache
 			s.mu.RLock()
 			if fetchTime, ok := s.fetchCache[path]; ok {
@@ -239,6 +242,60 @@ func (s *Scanner) UpdateFetchTime(repoPath string) {
 	s.saveFetchCache()
 }
 
+// enhanceRepoInfo adds organization awareness and folder info to repository
+func (s *Scanner) enhanceRepoInfo(repo *git.Repository) {
+	// Check if account is a known personal account
+	if _, isAccount := s.config.Accounts[repo.Account]; isAccount {
+		repo.IsOrg = false
+		repo.FolderName = repo.Account
+		return
+	}
+	
+	// Check if it's a known organization
+	for org := range s.config.Orgs {
+		if org == repo.Account {
+			repo.IsOrg = true
+			repo.FolderName = repo.Account
+			return
+		}
+	}
+	
+	// Try to infer from path structure
+	// If repo is in ~/Projects/account/repo-name format
+	pathParts := strings.Split(repo.Path, string(filepath.Separator))
+	for i, part := range pathParts {
+		if part == "Projects" && i+2 < len(pathParts) {
+			potentialAccount := pathParts[i+1]
+			// If the folder name matches a known account or org, use it
+			if _, isAccount := s.config.Accounts[potentialAccount]; isAccount {
+				repo.FolderName = potentialAccount
+				repo.IsOrg = false
+				return
+			}
+			for org := range s.config.Orgs {
+				if org == potentialAccount {
+					repo.FolderName = potentialAccount
+					repo.IsOrg = true
+					return
+				}
+			}
+			// If not found in config but has a folder structure, use the folder name
+			if pathParts[i+2] == repo.Name {
+				repo.FolderName = potentialAccount
+				// Guess if it's an org based on naming patterns
+				repo.IsOrg = strings.Contains(potentialAccount, "-org") || 
+							strings.Contains(potentialAccount, "org-") ||
+							strings.HasSuffix(potentialAccount, "Org")
+				return
+			}
+		}
+	}
+	
+	// Default: use account name as folder
+	repo.FolderName = repo.Account
+	repo.IsOrg = false
+}
+
 // CloneRepo clones a repository with the appropriate SSH configuration
 func CloneRepo(repoURL string, cfg *config.Config, targetPath string) error {
 	// Parse the repository URL to extract owner and repo name
@@ -294,20 +351,24 @@ func CloneRepo(repoURL string, cfg *config.Config, targetPath string) error {
 	
 	// Determine target directory
 	if targetPath == "" {
-		// Default to appropriate folder structure
-		targetDir := cfg.BaseDir
+		// Organize by account/owner name
+		// Use the account name if it exists, otherwise use the owner name
+		folderName := owner
 		
-		// Check folder structure
-		for folder, accounts := range cfg.Folders {
-			for _, account := range accounts {
-				if account == owner {
-					targetDir = filepath.Join(cfg.BaseDir, folder)
+		// Check if this is a known account
+		if _, isAccount := cfg.Accounts[owner]; isAccount {
+			folderName = owner
+		} else {
+			// Check if it's an organization we track
+			for org := range cfg.Orgs {
+				if org == owner {
+					folderName = owner
 					break
 				}
 			}
 		}
 		
-		targetPath = filepath.Join(targetDir, repoName)
+		targetPath = filepath.Join(cfg.BaseDir, folderName, repoName)
 	}
 	
 	// Ensure parent directory exists

@@ -15,7 +15,9 @@ import (
 type Repository struct {
 	Path         string
 	Name         string
-	Account      string
+	Account      string   // The owner (user or org) from remote URL
+	FolderName   string   // The folder name it should be organized under
+	IsOrg        bool     // Whether this is an organization repo
 	RemoteURL    string
 	Branch       string
 	IsClean      bool
