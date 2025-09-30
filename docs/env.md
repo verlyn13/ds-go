@@ -20,6 +20,10 @@ This document summarizes environment variables and conventions for the ds local 
   - Endpoints that return lists (e.g., `/v1/status`, `/v1/organize/plan`) return `{ schema_version, data: [...] }`.
   - `envelope=true` is accepted but no longer required; responses already include `schema_version`.
 
+- Runtime versions
+  - Node.js: use Node 24+ for all Node scripts and CI across repos.
+  - Go toolchain: see `.mise.toml` `GO_VERSION`.
+
 - Paths and data
   - Config: `${XDG_CONFIG_HOME}/ds/config.yaml` (see `ds init`).
   - Index: `${BaseDir}/.ds-index.json`, Fetch cache: `${BaseDir}/.ds-fetch-cache.json`.
