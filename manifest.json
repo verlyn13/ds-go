@@ -1,0 +1,103 @@
+{
+  "apiVersion": "manifest.v1",
+  "kind": "ProjectManifest",
+  "metadata": {
+    "name": "ds-go",
+    "repository": "https://github.com/verlyn13/ds-go",
+    "description": "Go-based data service for system analysis",
+    "created": "2025-01-01T00:00:00Z",
+    "updated": "2025-09-28T12:00:00Z",
+    "labels": {
+      "tier": "core",
+      "team": "platform",
+      "environment": "production"
+    }
+  },
+  "spec": {
+    "type": "service",
+    "language": "go",
+    "runtime": {
+      "version": "1.23",
+      "platform": "linux/amd64"
+    },
+    "dependencies": [
+      {
+        "name": "postgres",
+        "type": "database",
+        "required": true,
+        "endpoint": "postgres://localhost:5432/dsgo"
+      },
+      {
+        "name": "redis",
+        "type": "cache",
+        "required": false,
+        "endpoint": "redis://localhost:6379"
+      }
+    ],
+    "contracts": {
+      "enabled": true,
+      "mode": "enforce",
+      "slo": {
+        "response_time_p95": 200,
+        "error_rate": 0.05,
+        "availability": 99.9
+      },
+      "observers": ["git", "sbom", "build"]
+    },
+    "health": {
+      "endpoint": "/health",
+      "interval": 30,
+      "timeout": 5
+    },
+    "endpoints": [
+      {
+        "name": "api",
+        "url": "http://localhost:8080",
+        "type": "http",
+        "public": true
+      },
+      {
+        "name": "metrics",
+        "url": "http://localhost:8080/metrics",
+        "type": "http",
+        "public": false
+      },
+      {
+        "name": "stream",
+        "url": "http://localhost:8080/stream",
+        "type": "sse",
+        "public": true
+      }
+    ],
+    "mcp": {
+      "enabled": false
+    }
+  },
+  "status": {
+    "phase": "running",
+    "message": "Service is healthy",
+    "conditions": [
+      {
+        "type": "Ready",
+        "status": "True",
+        "reason": "ServiceHealthy",
+        "message": "All health checks passing",
+        "lastTransition": "2025-09-28T12:00:00Z"
+      },
+      {
+        "type": "ContractsCompliant",
+        "status": "True",
+        "reason": "ContractsValid",
+        "message": "All contract requirements met",
+        "lastTransition": "2025-09-28T12:00:00Z"
+      }
+    ],
+    "metrics": {
+      "response_time_p95": 185,
+      "error_rate": 0.02,
+      "availability": 99.95,
+      "requests_per_second": 150
+    },
+    "lastObservation": "2025-09-28T12:30:00Z"
+  }
+}

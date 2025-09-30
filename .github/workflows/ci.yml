@@ -1,0 +1,261 @@
+name: CI - Contract Enforcement
+
+on:
+  push:
+    branches: [main, develop, 'feature/**']
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+env:
+  GO_VERSION: '1.21'
+  NODE_VERSION: '20'
+  DS_TEST_TOKEN: 'ci-test-token-${{ github.run_id }}'
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Build all packages
+        run: |
+          echo "Building all packages..."
+          go build -v ./...
+
+      - name: Build DS server binary
+        run: |
+          echo "Building DS server..."
+          go build -o ds-server ./cmd/ds
+
+      - name: Run unit tests
+        run: |
+          echo "Running tests..."
+          go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: coverage.out
+
+  openapi-validation:
+    name: OpenAPI Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install OpenAPI tools
+        run: |
+          npm install -g @redocly/cli@latest
+          npm install -g @apidevtools/swagger-cli@latest
+          npm install -g @stoplight/spectral-cli@latest
+
+      - name: Validate main OpenAPI spec
+        run: |
+          echo "=== Validating main OpenAPI spec ==="
+          if [ -f "openapi.yaml" ]; then
+            swagger-cli validate openapi.yaml
+            echo "✅ Main OpenAPI spec is valid"
+          else
+            echo "⚠️ Main OpenAPI spec not found"
+          fi
+
+      - name: Validate internal OpenAPI spec
+        run: |
+          echo "=== Validating internal OpenAPI spec ==="
+          swagger-cli validate internal/server/openapi.yaml
+          echo "✅ Internal OpenAPI spec is valid"
+
+      - name: Lint OpenAPI with Redocly
+        run: |
+          echo "=== Linting with Redocly ==="
+          if [ -f ".redocly.yaml" ]; then
+            redocly lint internal/server/openapi.yaml
+          else
+            echo "⚠️ Redocly config not found, using defaults"
+            redocly lint internal/server/openapi.yaml --extends recommended
+          fi
+
+      - name: Lint OpenAPI with Spectral
+        run: |
+          echo "=== Linting with Spectral ==="
+          spectral lint internal/server/openapi.yaml --ruleset https://unpkg.com/@stoplight/spectral-owasp-ruleset/dist/ruleset.mjs || true
+
+  contract-validation:
+    name: Contract Validation
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build DS server
+        run: go build -o ds-server ./cmd/ds
+
+      - name: Start DS server
+        run: |
+          echo "Starting DS server..."
+          DS_TOKEN=ci-test-token DS_CORS=1 ./ds-server serve --addr 127.0.0.1:7777 &
+          echo $! > server.pid
+          sleep 5
+          echo "Server started with PID $(cat server.pid)"
+
+      - name: Verify server is running
+        run: |
+          curl -f http://127.0.0.1:7777/v1/health || (echo "Server not responding" && exit 1)
+          echo "✅ Server is running"
+
+      - name: Run endpoint contract checks
+        run: |
+          echo "=== Contract Validation ==="
+          TOKEN="ci-test-token"
+          BASE="http://127.0.0.1:7777"
+
+          # Check health endpoint
+          echo "Checking /v1/health..."
+          curl -f -H "Authorization: Bearer $TOKEN" $BASE/v1/health | \
+            jq -e '.schema_version == "ds.v1" and .ok == true'
+
+          # Check self-status
+          echo "Checking /api/self-status..."
+          curl -f -H "Authorization: Bearer $TOKEN" $BASE/api/self-status | \
+            jq -e '.schema_version == "ds.v1" and .nowMs != null and (.nowMs | type) == "number"'
+
+          # Check capabilities
+          echo "Checking /v1/capabilities..."
+          curl -f -H "Authorization: Bearer $TOKEN" $BASE/v1/capabilities | \
+            jq -e '.schema_version == "ds.v1" and .endpoints | length > 0'
+
+          # Check discovery services
+          echo "Checking /api/discovery/services..."
+          curl -f -H "Authorization: Bearer $TOKEN" $BASE/api/discovery/services | \
+            jq -e '.ds.self_status != null and .ts != null and (.ts | type) == "number" and .ds_token_present == true'
+
+          # Check well-known
+          echo "Checking /.well-known/obs-bridge.json..."
+          curl -f -H "Authorization: Bearer $TOKEN" $BASE/.well-known/obs-bridge.json | \
+            jq -e '.contractVersion != null and .schemaVersion != null'
+
+          # Check status endpoint wrapper
+          echo "Checking /v1/status response structure..."
+          curl -f -H "Authorization: Bearer $TOKEN" "$BASE/v1/status?path=/tmp" | \
+            jq -e '.schema_version == "ds.v1" and has("data")'
+
+          echo "✅ All contract checks passed!"
+
+      - name: Run verification script
+        run: |
+          if [ -f "scripts/verify-ds-services.sh" ]; then
+            echo "Running DS services verification..."
+            chmod +x scripts/verify-ds-services.sh
+            DS_BASE_URL=http://127.0.0.1:7777 DS_TOKEN=ci-test-token ./scripts/verify-ds-services.sh
+          fi
+
+      - name: Run Stage 0 verification
+        run: |
+          if [ -f "scripts/verify-stage0.sh" ]; then
+            echo "Running Stage 0 verification..."
+            chmod +x scripts/verify-stage0.sh
+            DS_TOKEN=ci-test-token ./scripts/verify-stage0.sh
+          fi
+
+      - name: Stop DS server
+        if: always()
+        run: |
+          if [ -f server.pid ]; then
+            kill $(cat server.pid) || true
+            rm server.pid
+          fi
+
+  schema-consistency:
+    name: Schema Version Consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check schema versions in code
+        run: |
+          echo "=== Checking schema version consistency ==="
+
+          # Check server code for ds.v1
+          echo "Checking server.go..."
+          grep -q '"ds.v1"' internal/server/server.go || \
+            (echo "❌ Schema version 'ds.v1' not found in server.go" && exit 1)
+
+          # Check OpenAPI spec
+          echo "Checking OpenAPI spec..."
+          grep -q 'schema_version.*ds\.v1' internal/server/openapi.yaml || \
+            (echo "⚠️ Schema version examples might be missing in OpenAPI" && exit 0)
+
+          # Check contract version file
+          echo "Checking contract version..."
+          if [ -f "docs/contracts/VERSION.md" ]; then
+            grep -q "Schema Version.*ds.v1" docs/contracts/VERSION.md || \
+              (echo "❌ Contract version file missing schema version" && exit 1)
+          else
+            echo "❌ Contract version file missing!"
+            exit 1
+          fi
+
+          echo "✅ Schema versions are consistent"
+
+      - name: Check for breaking changes markers
+        run: |
+          echo "=== Checking for breaking changes documentation ==="
+
+          # Check for CHANGELOG
+          if [ -f "CHANGELOG.md" ]; then
+            echo "✅ CHANGELOG.md exists"
+          else
+            echo "⚠️ CHANGELOG.md not found (will be created in next steps)"
+          fi
+
+          # Check README for version info
+          grep -q "ds.v1\|v1.1.0" README.md && \
+            echo "✅ README contains version information" || \
+            echo "⚠️ README should mention contract version"
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run gosec security scanner
+        uses: securego/gosec@master
+        with:
+          args: './...'
+
+      - name: Check for secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD

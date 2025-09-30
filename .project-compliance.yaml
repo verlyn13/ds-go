@@ -1,0 +1,164 @@
+# Project Compliance Configuration for ds-go
+# Defines project-specific requirements aligned with system policies
+
+metadata:
+  project: ds-go
+  repository: github.com/verlyn13/ds-go
+  owner: verlyn13
+  location: ~/Development/personal/ds-go
+  compliance_version: "1.0.0"
+
+# Alignment with system policies
+system_integration:
+  base_policy: ~/Development/personal/system-setup-update/04-policies/policy-as-code.yaml
+  directory_compliance: true
+  account_mapping: personal
+  ssh_host: github.com
+
+# Required project structure
+project_structure:
+  required_files:
+    - path: .mise.toml
+      purpose: "Version and task management"
+    - path: .envrc
+      purpose: "Environment isolation with direnv"
+    - path: .gitignore
+      purpose: "Git exclusions"
+    - path: .golangci.yml
+      purpose: "Linting configuration"
+    - path: README.md
+      purpose: "Project documentation"
+    - path: CLAUDE.md
+      purpose: "AI assistant context"
+    - path: SYSTEM_INTEGRATION.md
+      purpose: "System requirements documentation"
+    - path: Makefile
+      purpose: "Legacy build support"
+
+  required_directories:
+    - path: cmd/ds
+      purpose: "CLI entry point"
+    - path: internal/
+      purpose: "Internal packages"
+    - path: scripts/
+      purpose: "Utility scripts"
+
+# Tool requirements
+tools:
+  go:
+    version: "1.25.1"
+    managed_by: mise
+  golangci-lint:
+    version: latest
+    managed_by: mise
+  goreleaser:
+    version: latest
+    managed_by: mise
+
+# Development workflow
+workflow:
+  commands:
+    build: mise run build
+    test: mise run test
+    lint: mise run lint
+    validate: mise run validate
+    ci: mise run ci
+
+  git_hooks:
+    pre-commit:
+      - mise run lint
+      - mise run test
+    pre-push:
+      - mise run ci
+
+# Account mappings for ds tool
+ds_accounts:
+  verlyn13:
+    type: personal
+    directory: ~/Development/personal
+    ssh_host: github.com
+
+  jjohnson-47:
+    type: work
+    directory: ~/Development/work
+    ssh_host: github-work
+
+  happy-patterns:
+    type: business
+    directory: ~/Development/business
+    ssh_host: github-business
+
+  happy-patterns-org:
+    type: business-org
+    directory: ~/Development/business-org
+    ssh_host: github-business-org
+
+  hubofwyn:
+    type: business
+    directory: ~/Development/hubofwyn
+    ssh_host: github-hubofwyn
+
+# Validation rules
+validation:
+  checks:
+    - name: directory_location
+      description: "Project in correct directory"
+      command: "pwd | grep -q '/Development/personal/ds-go'"
+      severity: critical
+
+    - name: mise_configured
+      description: "Mise configuration present"
+      command: "[ -f .mise.toml ]"
+      severity: critical
+
+    - name: direnv_configured
+      description: "Direnv configuration present"
+      command: "[ -f .envrc ]"
+      severity: high
+
+    - name: ssh_multi_account
+      description: "Multiple SSH accounts configured"
+      command: "grep -q 'Host github-work' ~/.ssh/config"
+      severity: medium
+
+    - name: ds_config
+      description: "ds configuration exists"
+      command: "[ -f ~/.config/ds/config.yaml ]"
+      severity: low
+
+  compliance_thresholds:
+    critical: 100%  # All critical checks must pass
+    high: 90%       # 90% of high checks must pass
+    medium: 70%     # 70% of medium checks must pass
+    low: 50%        # 50% of low checks must pass
+
+# Security requirements
+security:
+  forbidden_files:
+    - .env
+    - "*.pem"
+    - "*.key"
+    - credentials.json
+    - "*_TOKEN"
+    - "*_SECRET"
+
+  required_gitignore:
+    - .env
+    - "*.pem"
+    - "*.key"
+    - .ds-config.yaml
+    - .ds-index.json
+    - .ds-fetch-cache.json
+
+# Performance standards
+performance:
+  build_time_seconds: 5
+  test_time_seconds: 10
+  scan_time_ms_per_repo: 50
+  fetch_timeout_seconds: 30
+
+# Reporting
+reporting:
+  validation_output: ./validation-report.md
+  frequency: on_commit
+  format: markdown

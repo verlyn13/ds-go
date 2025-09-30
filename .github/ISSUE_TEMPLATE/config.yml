@@ -1,0 +1,6 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Demo Runbook
+    url: https://github.com/verlyn13/ds-go/blob/main/docs/integration-checklist.md
+    about: Follow the 15‑minute demo runbook to validate end-to-end
+

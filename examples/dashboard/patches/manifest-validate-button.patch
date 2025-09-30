@@ -1,0 +1,62 @@
+diff --git a/src/components/ManifestCard.jsx b/src/components/ManifestCard.jsx
+index 1111111..2222222 100644
+--- a/src/components/ManifestCard.jsx
++++ b/src/components/ManifestCard.jsx
+@@
+ import React from 'react';
+ 
+ export default function ManifestCard({ projectId }) {
+   const [state, setState] = React.useState({ loading: true, result: null, error: null, validating: false });
+ 
+   const fetchManifest = React.useCallback(async () => {
+     setState(s => ({ ...s, loading: true, error: null }));
+     try {
+       const res = await fetch(`/api/obs/projects/${encodeURIComponent(projectId)}/manifest`);
+       const json = await res.json();
+       setState({ loading: false, result: json, error: null, validating: false });
+     } catch (e) {
+       setState({ loading: false, result: null, error: String(e), validating: false });
+     }
+   }, [projectId]);
+ 
+   React.useEffect(() => { fetchManifest(); }, [fetchManifest]);
+ 
+   const onValidate = async () => {
+     setState(s => ({ ...s, validating: true }));
+     await fetchManifest();
+   };
+ 
+   const r = state.result;
+   return (
+     <div className="card">
+       <div className="card-header">
+         <h3>Manifest Validation</h3>
+         <div className="actions">
+           <button onClick={onValidate} disabled={state.loading || state.validating}>
+             {state.validating ? 'Validating…' : 'Validate'}
+           </button>
+         </div>
+       </div>
+       {state.loading && <p>Loading…</p>}
+       {state.error && <pre className="error">{state.error}</pre>}
+       {r && (
+         <div>
+           <p>
+             Status: {r.valid ? <span className="ok">Valid</span> : <span className="warn">Invalid</span>}
+             {r.checkedAt && <span> • Checked: {new Date(r.checkedAt).toLocaleString()}</span>}
+           </p>
+           {r.path && <p>Path: <code>{r.path}</code></p>}
+           <details open={!r.valid}>
+             <summary>Errors</summary>
+             <pre>{(r.errors && r.errors.length ? JSON.stringify(r.errors, null, 2) : 'None')}</pre>
+           </details>
+           <details>
+             <summary>Manifest (JSON)</summary>
+             <pre>{JSON.stringify(r.manifest, null, 2)}</pre>
+           </details>
+         </div>
+       )}
+     </div>
+   );
+ }
+

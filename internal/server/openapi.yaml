@@ -1,0 +1,563 @@
+openapi: 3.1.0
+info:
+  title: ds Local API
+  version: 1.0.0
+  description: Local-only API for repository status, fetch, organize, policy, and exec.
+servers:
+  - url: http://127.0.0.1:7777
+paths:
+  /v1/capabilities:
+    get:
+      summary: List supported capabilities
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version: { type: integer }
+                  schema: { type: string }
+                  endpoints: { type: array, items: { type: string } }
+                  timestamp: { type: string, format: date-time }
+                  openapi_url: { type: string }
+                  schema_version: { type: string }
+              example:
+                version: 1
+                schema: "v1"
+                endpoints: ["/v1/capabilities", "/v1/health", "/v1/status"]
+                timestamp: "2025-09-29T20:00:00Z"
+                openapi_url: "/openapi.yaml"
+                schema_version: "ds.v1"
+  /v1/health:
+    get:
+      summary: Health status
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  version: { type: integer }
+                  uptime_sec: { type: integer }
+                  workers: { type: integer }
+                  auth: { type: boolean }
+                  timestamp: { type: string, format: date-time }
+                  schema_version: { type: string }
+              example:
+                ok: true
+                version: 1
+                uptime_sec: 3600
+                workers: 10
+                auth: true
+                timestamp: "2025-09-29T20:00:00Z"
+                schema_version: "ds.v1"
+  /v1/status:
+    get:
+      summary: Repository status
+      parameters:
+        - in: query
+          name: path
+          schema: { type: string }
+        - in: query
+          name: account
+          schema: { type: string }
+        - in: query
+          name: dirty
+          schema: { type: boolean }
+        - in: query
+          name: envelope
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: List of repositories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  schema_version: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Repository' }
+              examples:
+                example:
+                  value:
+                    schema_version: "ds.v1"
+                    data:
+                      - Path: "/Users/me/Projects/verlyn13/ds-go"
+                        Name: "ds-go"
+                        Account: "verlyn13"
+                        FolderName: "verlyn13"
+                        IsOrg: false
+                        RemoteURL: "git@github.com:verlyn13/ds-go.git"
+                        Branch: "main"
+                        IsClean: true
+                        Uncommitted: 0
+                        Ahead: 0
+                        Behind: 0
+                        LastCommit: "2 days ago: chore: ..."
+                        LastFetch: null
+                        HasStash: false
+                        HasUpstream: true
+                        scan_time: "2025-09-28T10:21:56Z"
+              example:
+                schema_version: "ds.v1"
+                data:
+                  - Path: "/Users/dev/projects/my-repo"
+                    Name: "my-repo"
+                    Account: "verlyn13"
+                    RemoteURL: "git@github.com:verlyn13/my-repo.git"
+                    Branch: "main"
+                    IsClean: false
+                    Uncommitted: 3
+                    Ahead: 1
+                    Behind: 0
+                    LastCommit: "2 hours ago: Fix authentication"
+                    LastFetch: "2025-09-29T10:00:00Z"
+                    HasUpstream: true
+                    scan_time: "2025-09-29T15:30:00Z"
+  /v1/status/stream:
+    get:
+      summary: NDJSON stream of repositories
+      responses:
+        '200':
+          description: NDJSON stream
+          content:
+            application/x-ndjson:
+              schema: { type: string }
+  /v1/status/sse:
+    get:
+      summary: SSE stream of repositories
+      responses:
+        '200':
+          description: text/event-stream
+  /v1/scan:
+    get:
+      summary: Scan and update index
+      parameters:
+        - in: query
+          name: path
+          schema: { type: string }
+        - in: query
+          name: envelope
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  schema_version: { type: string }
+                  count: { type: integer }
+              examples:
+                example:
+                  value:
+                    schema_version: "ds.v1"
+                    count: 42
+              example:
+                schema_version: "ds.v1"
+                count: 42
+  /v1/organize/plan:
+    get:
+      summary: Plan repository moves
+      parameters:
+        - in: query
+          name: require_clean
+          schema: { type: boolean }
+        - in: query
+          name: envelope
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Plan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  schema_version: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/MovePlan' }
+              example:
+                schema_version: "ds.v1"
+                data:
+                  - name: "misplaced-repo"
+                    account: "verlyn13"
+                    is_org: false
+                    old_path: "/Users/dev/Projects/misplaced-repo"
+                    new_path: "/Users/dev/Projects/verlyn13/misplaced-repo"
+                    reason: "Wrong directory structure"
+                  - name: "org-repo"
+                    account: "happy-patterns-org"
+                    is_org: true
+                    old_path: "/Users/dev/Projects/org-repo"
+                    new_path: "/Users/dev/Projects/happy-patterns-org/org-repo"
+                    reason: "Organization repository in wrong location"
+  /v1/organize/apply:
+    get:
+      summary: Apply organize plan
+      parameters:
+        - in: query
+          name: require_clean
+          schema: { type: boolean }
+        - in: query
+          name: force
+          schema: { type: boolean }
+        - in: query
+          name: dry_run
+          schema: { type: boolean }
+        - in: query
+          name: envelope
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  schema_version: { type: string }
+                  moved: { type: integer }
+                  failed: { type: integer }
+                  results:
+                    type: array
+                    items: { $ref: '#/components/schemas/OrganizeResult' }
+              examples:
+                example:
+                  value:
+                    moved: 1
+                    failed: 0
+                    results:
+                      - name: repo-one
+                        old_path: /Users/me/Projects/repo-one
+                        new_path: /Users/me/Projects/verlyn13/repo-one
+                        applied: true
+                        dry_run: false
+  /v1/fetch:
+    get:
+      summary: Fetch repositories
+      parameters:
+        - in: query
+          name: account
+          schema: { type: string }
+        - in: query
+          name: dirty
+          schema: { type: boolean }
+        - in: query
+          name: envelope
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  schema_version: { type: string }
+                  results:
+                    type: array
+                    items: { $ref: '#/components/schemas/FetchResult' }
+              examples:
+                example:
+                  value:
+                    results:
+                      - RepoName: ds-go
+                        Success: true
+                        Error: null
+                        Duration: 1.25s
+  /v1/fetch/sse:
+    get:
+      summary: SSE streaming fetch results
+      responses:
+        '200':
+          description: text/event-stream
+  /v1/policy/check:
+    get:
+      summary: Run policy checks
+      parameters:
+        - in: query
+          name: file
+          schema: { type: string }
+        - in: query
+          name: fail_on
+          schema: { type: string, enum: [critical, high, medium, low] }
+        - in: query
+          name: envelope
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  schema_version: { type: string }
+                  report: { $ref: '#/components/schemas/PolicyReport' }
+                  failed_threshold: { type: boolean }
+              examples:
+                example:
+                  value:
+                    report:
+                      results:
+                        - name: directory_location
+                          description: Project in correct directory
+                          severity: critical
+                          passed: true
+                          duration_ms: 12
+                      summary:
+                        total: 10
+                        passed: 10
+                        failed: 0
+                        warnings: 0
+                    failed_threshold: false
+  /v1/exec:
+    post:
+      summary: Execute a command across repositories
+      parameters:
+        - in: query
+          name: account
+          schema: { type: string }
+        - in: query
+          name: dirty
+          schema: { type: boolean }
+        - in: query
+          name: timeout
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cmd: { type: string }
+      responses:
+        '200':
+          description: Results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  schema_version: { type: string }
+                  results:
+                    type: array
+                    items: { $ref: '#/components/schemas/ExecResult' }
+              examples:
+                example:
+                  value:
+                    results:
+                      - repo: ds-go
+                        path: /Users/me/Projects/verlyn13/ds-go
+                        success: true
+                        duration_ms: 210
+components:
+  schemas:
+    Repository:
+      type: object
+      properties:
+        Path: { type: string }
+        Name: { type: string }
+        Account: { type: string }
+        FolderName: { type: string }
+        IsOrg: { type: boolean }
+        RemoteURL: { type: string }
+        Branch: { type: string }
+        IsClean: { type: boolean }
+        Uncommitted: { type: integer }
+        Ahead: { type: integer }
+        Behind: { type: integer }
+        LastCommit: { type: string }
+        LastFetch: { type: string, nullable: true }
+        HasStash: { type: boolean }
+        HasUpstream: { type: boolean }
+        scan_time: { type: string, format: date-time }
+    FetchResult:
+      type: object
+      properties:
+        RepoName: { type: string }
+        Success: { type: boolean }
+        Error: { type: string, nullable: true }
+        Duration: { type: string }
+    MovePlan:
+      type: object
+      properties:
+        name: { type: string }
+        account: { type: string }
+        is_org: { type: boolean }
+        old_path: { type: string }
+        new_path: { type: string }
+    OrganizeResult:
+      type: object
+      properties:
+        name: { type: string }
+        old_path: { type: string }
+        new_path: { type: string }
+        applied: { type: boolean }
+        error: { type: string, nullable: true }
+        dry_run: { type: boolean }
+    PolicyReport:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              description: { type: string }
+              severity: { type: string }
+              passed: { type: boolean }
+              error: { type: string, nullable: true }
+              duration_ms: { type: integer }
+        summary:
+          type: object
+          properties:
+            total: { type: integer }
+            passed: { type: integer }
+            failed: { type: integer }
+            warnings: { type: integer }
+    ExecResult:
+      type: object
+      properties:
+        repo: { type: string }
+        path: { type: string }
+        success: { type: boolean }
+        error: { type: string, nullable: true }
+        duration_ms: { type: integer }
+  examples:
+    RepoStatusExample:
+      value:
+        - Path: "/Users/me/Projects/verlyn13/ds-go"
+          Name: "ds-go"
+          Account: "verlyn13"
+          FolderName: "verlyn13"
+          IsOrg: false
+          RemoteURL: "git@github.com:verlyn13/ds-go.git"
+          Branch: "main"
+          IsClean: true
+          Uncommitted: 0
+          Ahead: 0
+          Behind: 0
+          LastCommit: "2 days ago: chore: ..."
+          LastFetch: null
+          HasStash: false
+          HasUpstream: true
+          scan_time: "2025-09-28T10:21:56Z"
+  /api/self-status:
+    get:
+      summary: DS self-status (MCP-style)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service: { type: string }
+                  ok: { type: boolean }
+                  nowMs: { type: integer }
+                  auth:
+                    type: object
+                    properties:
+                      tokenRequired: { type: boolean }
+                      corsEnabled: { type: boolean }
+                  endpoints:
+                    type: object
+                    additionalProperties: { type: string }
+                  schema_version: { type: string }
+  /.well-known/obs-bridge.json:
+    get:
+      summary: Well-known bridge descriptor
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  contractVersion: { type: integer }
+                  schemaVersion: { type: string }
+                  openapi_url: { type: string }
+                  capabilities_url: { type: string }
+                  endpoints:
+                    type: object
+                    properties:
+                      openapi: { type: string }
+                      capabilities: { type: string }
+                      health: { type: string }
+                  all:
+                    type: array
+                    items: { type: string }
+  /api/discovery/services:
+    get:
+      summary: Discovery services descriptor
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ds:
+                    type: object
+                    properties:
+                      url: { type: string }
+                      well_known: { type: string }
+                      openapi: { type: string }
+                      capabilities: { type: string }
+                      health: { type: string }
+                      self_status: { type: string }
+                  ds_token_present: { type: boolean }
+                  ts: { type: integer, description: "Timestamp in milliseconds" }
+  /api/discovery/capabilities:
+    get:
+      summary: Discovery capabilities (minimal)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  contractVersion: { type: integer }
+                  schemaVersion: { type: string }
+                  openapi_url: { type: string }
+                  endpoints:
+                    type: array
+                    items: { type: string }
+  /api/discovery/openapi:
+    get:
+      summary: OpenAPI spec alias
+      responses:
+        '200':
+          description: OpenAPI specification
+          content:
+            application/x-yaml:
+              schema:
+                type: string
+  /openapi.yaml:
+    get:
+      summary: OpenAPI specification
+      responses:
+        '200':
+          description: OpenAPI specification
+          content:
+            application/x-yaml:
+              schema:
+                type: string

@@ -1,0 +1,153 @@
+name: Validate Contracts
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'internal/server/**'
+      - 'pkg/dsclient/**'
+      - 'openapi.yaml'
+      - '.github/workflows/validate-contracts.yml'
+
+jobs:
+  validate-openapi:
+    name: Validate OpenAPI Spec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install OpenAPI tools
+        run: |
+          npm install -g @redocly/cli@latest
+          npm install -g @apidevtools/swagger-cli@latest
+
+      - name: Validate main OpenAPI spec
+        run: |
+          echo "Validating main OpenAPI spec..."
+          swagger-cli validate openapi.yaml
+
+      - name: Validate internal OpenAPI spec
+        run: |
+          echo "Validating internal OpenAPI spec..."
+          swagger-cli validate internal/server/openapi.yaml
+
+      - name: Lint OpenAPI spec
+        run: |
+          echo "Linting OpenAPI spec..."
+          redocly lint openapi.yaml || true  # Non-blocking for now
+
+  validate-endpoints:
+    name: Validate API Endpoints
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build DS server
+        run: go build -o ds-server ./cmd/ds
+
+      - name: Start DS server
+        run: |
+          DS_TOKEN=test123 DS_CORS=1 ./ds-server serve --addr 127.0.0.1:7777 &
+          sleep 3
+
+      - name: Verify health endpoint
+        run: |
+          echo "Checking /v1/health..."
+          curl -f -H "Authorization: Bearer test123" http://127.0.0.1:7777/v1/health | \
+            jq -e '.schema_version == "ds.v1"'
+
+      - name: Verify self-status endpoint
+        run: |
+          echo "Checking /api/self-status..."
+          curl -f -H "Authorization: Bearer test123" http://127.0.0.1:7777/api/self-status | \
+            jq -e '.schema_version == "ds.v1" and .nowMs'
+
+      - name: Verify capabilities endpoint
+        run: |
+          echo "Checking /v1/capabilities..."
+          curl -f -H "Authorization: Bearer test123" http://127.0.0.1:7777/v1/capabilities | \
+            jq -e '.schema_version == "ds.v1"'
+
+      - name: Verify discovery services
+        run: |
+          echo "Checking /api/discovery/services..."
+          curl -f -H "Authorization: Bearer test123" http://127.0.0.1:7777/api/discovery/services | \
+            jq -e '.ds.self_status and .ts'
+
+      - name: Verify well-known endpoint
+        run: |
+          echo "Checking /.well-known/obs-bridge.json..."
+          curl -f -H "Authorization: Bearer test123" http://127.0.0.1:7777/.well-known/obs-bridge.json | \
+            jq -e '.contractVersion'
+
+      - name: Run Stage 0 verification
+        run: |
+          echo "Running Stage 0 verification script..."
+          chmod +x scripts/verify-stage0.sh
+          DS_TOKEN=test123 ./scripts/verify-stage0.sh
+
+  test-client:
+    name: Test Go Client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Run client tests
+        run: |
+          echo "Testing Go client..."
+          go test -v ./pkg/dsclient/...
+
+      - name: Build example client
+        run: |
+          echo "Building example client..."
+          go build ./examples/go-client
+
+  contract-compliance:
+    name: Contract Compliance Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check contract version file
+        run: |
+          echo "Checking contract version..."
+          if [ ! -f "docs/contracts/VERSION.md" ]; then
+            echo "ERROR: Contract version file missing!"
+            exit 1
+          fi
+          grep -q "v1.1.0" docs/contracts/VERSION.md || {
+            echo "ERROR: Contract version mismatch!"
+            exit 1
+          }
+
+      - name: Check schema versions in code
+        run: |
+          echo "Verifying schema versions in code..."
+          grep -q '"ds.v1"' internal/server/server.go || {
+            echo "ERROR: Schema version not found in server code!"
+            exit 1
+          }
+
+      - name: Check OpenAPI version
+        run: |
+          echo "Checking OpenAPI version..."
+          grep -q "version: 1.0.0" openapi.yaml || {
+            echo "WARNING: OpenAPI version not 1.0.0"
+          }

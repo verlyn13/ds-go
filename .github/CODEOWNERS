@@ -1,0 +1,51 @@
+# CODEOWNERS for ds-go
+# These owners will be automatically requested for review on PRs affecting these paths
+# CRITICAL: Changes to these paths affect API contracts and require thorough review
+
+# Global owners (fallback for any file not matched below)
+* @verlyn13
+
+# === CONTRACT-CRITICAL PATHS ===
+# These files define or implement the API contract and MUST be carefully reviewed
+
+# OpenAPI specifications - API contract definitions
+/openapi.yaml @verlyn13 @contract-reviewers
+/internal/server/openapi.yaml @verlyn13 @contract-reviewers
+/.redocly.yaml @verlyn13
+/.spectral.yml @verlyn13
+
+# Server implementation - Core API logic
+# CRITICAL: Contains writeJSONVersioned and all endpoint implementations
+/internal/server/server.go @verlyn13 @contract-reviewers
+/internal/server/ @verlyn13
+/internal/server/static.go @verlyn13
+
+# Contract versioning enforcement
+# Lines 436-450 contain writeJSONVersioned which enforces schema_version
+/internal/server/server.go:436-450 @verlyn13 @contract-reviewers
+
+# Contract documentation
+/docs/contracts/ @verlyn13
+/CHANGELOG.md @verlyn13
+/README.md @verlyn13
+
+# Client package - Public API interface
+/pkg/dsclient/ @verlyn13
+
+# CI/CD and validation
+/.github/workflows/ @verlyn13
+/scripts/verify-*.sh @verlyn13
+/scripts/*validate*.* @verlyn13
+
+# Configuration and examples
+/examples/ @verlyn13
+/.mise.toml @verlyn13
+
+# Policy and compliance
+/internal/policy/ @verlyn13
+/.project-compliance.yaml @verlyn13
+
+# Critical documentation
+/API.md @verlyn13
+/STAGE*.md @verlyn13
+/docs/issues/ @verlyn13

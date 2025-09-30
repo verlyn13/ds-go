@@ -21,8 +21,8 @@ import (
 
 // Repository is an alias for git.Repository with additional scanner metadata
 type Repository struct {
-	*git.Repository
-	ScanTime time.Time `json:"scan_time"`
+    *git.Repository
+    ScanTime time.Time `json:"scan_time"`
 }
 
 // Scanner handles repository discovery and scanning
@@ -405,36 +405,9 @@ func CloneRepo(repoURL string, cfg *config.Config, targetPath string) error {
 
 // OrganizeRepos reorganizes repositories into proper account/org folder structure
 func OrganizeRepos(repos []Repository, cfg *config.Config, dryRun, force bool) error {
-	var toMove []struct {
-		repo    Repository
-		oldPath string
-		newPath string
-	}
+    toMove := OrganizePlan(repos, cfg)
 	
-	// Determine which repos need to be moved
-	for _, repo := range repos {
-		// Skip if no folder name determined
-		if repo.FolderName == "" || repo.FolderName == "unknown" {
-			continue
-		}
-		
-		// Expected path
-		expectedPath := filepath.Join(cfg.BaseDir, repo.FolderName, repo.Name)
-		
-		// Skip if already in correct location
-		if repo.Path == expectedPath {
-			continue
-		}
-		
-		// Check if repo is in the root Projects directory (needs organizing)
-		if filepath.Dir(repo.Path) == cfg.BaseDir {
-			toMove = append(toMove, struct {
-				repo    Repository
-				oldPath string
-				newPath string
-			}{repo, repo.Path, expectedPath})
-		}
-	}
+    // toMove already computed
 	
 	if len(toMove) == 0 {
 		fmt.Println("✓ All repositories are already organized")
@@ -455,10 +428,10 @@ func OrganizeRepos(repos []Repository, cfg *config.Config, dryRun, force bool) e
 		}
 	}
 	
-	if dryRun {
-		fmt.Println("\n[DRY RUN] No files were moved. Remove --dry-run to apply changes.")
-		return nil
-	}
+    if dryRun {
+        fmt.Println("\n[DRY RUN] No files were moved. Remove --dry-run to apply changes.")
+        return nil
+    }
 	
 	// Confirm before moving
 	if !force {
@@ -508,4 +481,101 @@ func OrganizeRepos(repos []Repository, cfg *config.Config, dryRun, force bool) e
 	}
 	
 	return nil
+}
+
+// MovePlan represents a proposed move of a repository
+type MovePlan struct {
+    Name      string `json:"name"`
+    Account   string `json:"account"`
+    IsOrg     bool   `json:"is_org"`
+    OldPath   string `json:"old_path"`
+    NewPath   string `json:"new_path"`
+}
+
+// OrganizePlan computes which repositories would be moved and where
+func OrganizePlan(repos []Repository, cfg *config.Config) []struct{ repo Repository; oldPath, newPath string } {
+    var toMove []struct{ repo Repository; oldPath, newPath string }
+    for _, repo := range repos {
+        if repo.FolderName == "" || repo.FolderName == "unknown" {
+            continue
+        }
+        expectedPath := filepath.Join(cfg.BaseDir, repo.FolderName, repo.Name)
+        if repo.Path == expectedPath {
+            continue
+        }
+        if filepath.Dir(repo.Path) == cfg.BaseDir {
+            toMove = append(toMove, struct{ repo Repository; oldPath, newPath string }{repo, repo.Path, expectedPath})
+        }
+    }
+    return toMove
+}
+
+// OrganizePlanJSON returns a JSON-friendly plan
+func OrganizePlanJSON(repos []Repository, cfg *config.Config) []MovePlan {
+    var plans []MovePlan
+    for _, m := range OrganizePlan(repos, cfg) {
+        plans = append(plans, MovePlan{
+            Name:    m.repo.Name,
+            Account: m.repo.FolderName,
+            IsOrg:   m.repo.IsOrg,
+            OldPath: m.oldPath,
+            NewPath: m.newPath,
+        })
+    }
+    return plans
+}
+
+// OrganizeResult describes the outcome of applying an organize operation
+type OrganizeResult struct {
+    Name    string `json:"name"`
+    OldPath string `json:"old_path"`
+    NewPath string `json:"new_path"`
+    Applied bool   `json:"applied"`
+    Error   string `json:"error,omitempty"`
+    DryRun  bool   `json:"dry_run"`
+}
+
+// ApplyOrganizePlan applies the organize plan and returns structured results
+func ApplyOrganizePlan(repos []Repository, cfg *config.Config, dryRun, force bool) ([]OrganizeResult, int, int) {
+    plan := OrganizePlan(repos, cfg)
+    results := make([]OrganizeResult, 0, len(plan))
+    moved := 0
+    failed := 0
+    for _, m := range plan {
+        res := OrganizeResult{
+            Name:    m.repo.Name,
+            OldPath: m.oldPath,
+            NewPath: m.newPath,
+            DryRun:  dryRun,
+        }
+        if dryRun {
+            results = append(results, res)
+            continue
+        }
+        // Create target directory
+        targetDir := filepath.Dir(m.newPath)
+        if err := os.MkdirAll(targetDir, 0755); err != nil {
+            res.Error = err.Error()
+            failed++
+            results = append(results, res)
+            continue
+        }
+        // Destination exists
+        if _, err := os.Stat(m.newPath); err == nil && !force {
+            res.Error = fmt.Sprintf("destination exists: %s", m.newPath)
+            failed++
+            results = append(results, res)
+            continue
+        }
+        if err := os.Rename(m.oldPath, m.newPath); err != nil {
+            res.Error = err.Error()
+            failed++
+            results = append(results, res)
+            continue
+        }
+        res.Applied = true
+        moved++
+        results = append(results, res)
+    }
+    return results, moved, failed
 }

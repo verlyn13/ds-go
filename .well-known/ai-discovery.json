@@ -1,0 +1,128 @@
+{
+  "name": "ds-go Repository Manager",
+  "version": "1.0.0",
+  "description": "Git repository management system with API for automation and AI integration",
+  "documentation": {
+    "api": "/API.md",
+    "openapi": "/openapi.yaml",
+    "examples": "/examples/",
+    "quickstart": "/QUICKSTART.md",
+    "claude_integration": "/examples/agents/claude-integration.md"
+  },
+  "server": {
+    "default_address": "http://127.0.0.1:7777",
+    "api_base": "/v1",
+    "start_command": "ds serve --addr 127.0.0.1:7777",
+    "health_check": "/v1/capabilities"
+  },
+  "capabilities": {
+    "core": [
+      "repository_status",
+      "repository_scanning",
+      "remote_fetching",
+      "repository_organization"
+    ],
+    "automation": [
+      "batch_command_execution",
+      "policy_compliance_checking",
+      "git_hooks_management"
+    ],
+    "streaming": [
+      "server_sent_events",
+      "ndjson_streaming",
+      "real_time_fetch_progress"
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/v1/capabilities",
+      "method": "GET",
+      "description": "API discovery and metadata"
+    },
+    {
+      "path": "/v1/status",
+      "method": "GET",
+      "description": "Repository status with filters",
+      "parameters": ["dirty", "account", "path"]
+    },
+    {
+      "path": "/v1/scan",
+      "method": "GET",
+      "description": "Scan for repositories"
+    },
+    {
+      "path": "/v1/fetch",
+      "method": "GET",
+      "description": "Fetch remote information"
+    },
+    {
+      "path": "/v1/organize/plan",
+      "method": "GET",
+      "description": "Preview repository organization"
+    },
+    {
+      "path": "/v1/organize/apply",
+      "method": "POST",
+      "description": "Apply repository organization"
+    },
+    {
+      "path": "/v1/policy/check",
+      "method": "GET",
+      "description": "Run compliance checks"
+    },
+    {
+      "path": "/v1/exec",
+      "method": "POST",
+      "description": "Execute commands across repos"
+    }
+  ],
+  "configuration": {
+    "config_file": "~/.config/ds/config.yaml",
+    "base_directory": "~/Development",
+    "accounts": [
+      "verlyn13",
+      "jjohnson-47",
+      "happy-patterns",
+      "happy-patterns-org",
+      "hubofwyn"
+    ]
+  },
+  "integration": {
+    "mcp": {
+      "config": "/examples/agents/mcp-config.yaml",
+      "supported": true
+    },
+    "system_policy": {
+      "path": "~/Development/personal/system-setup-update/04-policies/policy-as-code.yaml",
+      "observability": true
+    }
+  },
+  "use_cases": [
+    {
+      "name": "Repository Health Check",
+      "description": "Monitor status of all repositories",
+      "example": "GET /v1/status?dirty=true"
+    },
+    {
+      "name": "Batch Testing",
+      "description": "Run tests across all projects",
+      "example": "POST /v1/exec {\"cmd\": \"mise run test\"}"
+    },
+    {
+      "name": "Compliance Monitoring",
+      "description": "Check policy compliance",
+      "example": "GET /v1/policy/check?fail_on=critical"
+    },
+    {
+      "name": "Repository Organization",
+      "description": "Organize repos by account",
+      "example": "GET /v1/organize/plan"
+    }
+  ],
+  "metadata": {
+    "repository": "https://github.com/verlyn13/ds-go",
+    "license": "MIT",
+    "author": "verlyn13",
+    "last_updated": "2025-09-28"
+  }
+}

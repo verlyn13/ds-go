@@ -1,16 +1,16 @@
 package ui
 
 import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"strings"
-	"time"
+    "encoding/json"
+    "fmt"
+    "os"
+    "strings"
+    "time"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/jedib0t/go-pretty/v6/table"
-	"github.com/verlyn13/ds-go/internal/config"
-	"github.com/verlyn13/ds-go/internal/scan"
+    "github.com/charmbracelet/lipgloss"
+    "github.com/jedib0t/go-pretty/v6/table"
+    "github.com/verlyn13/ds-go/internal/config"
+    "github.com/verlyn13/ds-go/internal/scan"
 )
 
 // Native ANSI color codes for maximum performance
@@ -239,6 +239,33 @@ func PrintFetchResults(results []scan.FetchResult) {
 		totalDuration += r.Duration
 	}
 	
-	fmt.Printf("\n%sFetch complete:%s %d succeeded, %d failed in %.1fs\n",
-		ColorBold, ColorReset, succeeded, failed, totalDuration.Seconds())
+    fmt.Printf("\n%sFetch complete:%s %d succeeded, %d failed in %.1fs\n",
+        ColorBold, ColorReset, succeeded, failed, totalDuration.Seconds())
+}
+
+// PrintJSONFetchResults outputs fetch results as JSON
+func PrintJSONFetchResults(results []scan.FetchResult) error {
+    encoder := json.NewEncoder(os.Stdout)
+    encoder.SetIndent("", "  ")
+    return encoder.Encode(struct {
+        Results []scan.FetchResult `json:"results"`
+    }{Results: results})
+}
+
+// Generic JSON envelope for command responses
+type JSONResponse struct {
+    OK    bool        `json:"ok"`
+    Error string      `json:"error,omitempty"`
+    Data  interface{} `json:"data,omitempty"`
+}
+
+func PrintJSONResponse(ok bool, data interface{}, err error) error {
+    resp := JSONResponse{OK: ok, Data: data}
+    if err != nil {
+        resp.OK = false
+        resp.Error = err.Error()
+    }
+    enc := json.NewEncoder(os.Stdout)
+    enc.SetIndent("", "  ")
+    return enc.Encode(resp)
 }

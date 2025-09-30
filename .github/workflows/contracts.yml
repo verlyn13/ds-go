@@ -1,0 +1,11 @@
+name: Contract Enforcement
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  contract-enforcement:
+    uses: /Users/verlyn13/Development/personal/system-setup-update/contracts/enforcement/ci-cd/github-actions.yml@main

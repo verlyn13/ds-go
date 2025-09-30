@@ -21,8 +21,8 @@ type FetchResult struct {
 
 // Fetcher handles concurrent fetching of repositories
 type Fetcher struct {
-	gitClient   *git.Git
-	workerCount int
+    gitClient   *git.Git
+    workerCount int
 }
 
 // NewFetcher creates a new Fetcher with native Go concurrency
@@ -128,4 +128,44 @@ func (f *Fetcher) FetchSingle(repo Repository) FetchResult {
 		Error:    err,
 		Duration: time.Since(start),
 	}
+}
+
+// FetchAllStream fetches repositories and streams results as they complete.
+// Respects context cancelation and limits concurrency via semaphore.
+func (f *Fetcher) FetchAllStream(ctx context.Context, repos []Repository) <-chan FetchResult {
+    out := make(chan FetchResult)
+    // Filter indices to fetch
+    var toFetch []int
+    for i, repo := range repos {
+        if repo.RemoteURL != "no remote" {
+            toFetch = append(toFetch, i)
+        }
+    }
+    if len(toFetch) == 0 {
+        close(out)
+        return out
+    }
+    sem := semaphore.NewWeighted(int64(f.workerCount))
+    g, ctx := errgroup.WithContext(ctx)
+    for _, idx := range toFetch {
+        idx := idx
+        repo := repos[idx]
+        g.Go(func() error {
+            if err := sem.Acquire(ctx, 1); err != nil { return nil }
+            defer sem.Release(1)
+            start := time.Now()
+            err := f.gitClient.Fetch(repo.Path)
+            res := FetchResult{RepoName: repo.Name, Success: err == nil, Error: err, Duration: time.Since(start)}
+            select {
+            case out <- res:
+            case <-ctx.Done():
+            }
+            return nil
+        })
+    }
+    go func() {
+        _ = g.Wait()
+        close(out)
+    }()
+    return out
 }

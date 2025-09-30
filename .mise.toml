@@ -1,0 +1,150 @@
+# mise configuration for ds-go
+# Manages tool versions and project tasks
+
+[tools]
+go = "1.25.1"  # Matching system Go version
+golangci-lint = "latest"
+goreleaser = "latest"
+
+[env]
+# Project-specific environment variables
+GOMOD = "github.com/verlyn13/ds-go"
+CGO_ENABLED = "0"
+# GOOS and GOARCH will use system defaults if not set
+
+[tasks.build]
+description = "Build the ds binary"
+run = """
+  go build -ldflags "-s -w -X main.version=$(git describe --tags --always --dirty)" \
+    -o ds ./cmd/ds
+"""
+
+[tasks.install]
+description = "Build and install to /usr/local/bin"
+depends = ["build"]
+run = "sudo mv ds /usr/local/bin/"
+
+[tasks.test]
+description = "Run tests with coverage"
+run = "go test -v -race -cover ./..."
+
+[tasks.lint]
+description = "Run golangci-lint"
+run = "golangci-lint run ./..."
+
+[tasks.fmt]
+description = "Format code"
+run = """
+  go fmt ./...
+  gofumpt -w . 2>/dev/null || true
+"""
+
+[tasks.dev]
+description = "Run in development mode"
+run = "go run ./cmd/ds status"
+
+[tasks.clean]
+description = "Clean build artifacts"
+run = """
+  rm -f ds
+  rm -rf dist/
+  rm -f *.prof
+  rm -f coverage.*
+"""
+
+[tasks.deps]
+description = "Update dependencies"
+run = """
+  go get -u ./...
+  go mod tidy
+"""
+
+[tasks.release]
+description = "Create a release with goreleaser"
+run = "goreleaser release --clean"
+
+[tasks.snapshot]
+description = "Create a snapshot release"
+run = "goreleaser release --snapshot --clean"
+
+[tasks.bench]
+description = "Run benchmarks"
+run = "go test -bench=. -benchmem ./..."
+
+[tasks.race]
+description = "Run with race detector"
+run = 'go run -race ./cmd/ds ${@}'
+
+[tasks.profile-cpu]
+description = "Profile CPU usage"
+run = """
+  go run -cpuprofile=cpu.prof ./cmd/ds ${@}
+  go tool pprof cpu.prof
+"""
+
+[tasks.profile-mem]
+description = "Profile memory usage"
+run = """
+  go run -memprofile=mem.prof ./cmd/ds ${@}
+  go tool pprof mem.prof
+"""
+
+[tasks.status]
+description = "Quick status check"
+depends = ["build"]
+run = "./ds status"
+
+[tasks.fetch]
+description = "Quick fetch"
+depends = ["build"]
+run = "./ds fetch"
+
+[tasks.validate]
+description = "Validate ds compliance with system policies"
+run = """
+  echo "Validating ds-go compliance..."
+
+  # Check SSH configurations
+  echo "✓ Checking SSH configurations..."
+  grep -q "github-work\\|github-business" ~/.ssh/config && echo "  ✓ Multi-account SSH configured" || echo "  ⚠ Missing SSH configurations"
+
+  # Check account mappings
+  echo "✓ Checking account mappings..."
+  if [ -f ~/.config/ds/config.yaml ]; then
+    echo "  ✓ Config file exists"
+    grep -q "verlyn13\\|jjohnson-47\\|happy-patterns" ~/.config/ds/config.yaml && echo "  ✓ Accounts mapped" || echo "  ⚠ Missing account mappings"
+  else
+    echo "  ⚠ Config file missing - run 'ds init'"
+  fi
+
+  # Check directory structure
+  echo "✓ Checking directory structure..."
+  for dir in personal work business business-org hubofwyn; do
+    [ -d ~/Development/$dir ] && echo "  ✓ ~/Development/$dir exists" || echo "  ⚠ ~/Development/$dir missing"
+  done
+
+  echo "Validation complete!"
+"""
+
+[tasks.ci]
+description = "Run CI pipeline locally"
+run = """
+  mise run lint
+  mise run test
+  mise run build
+  echo "✅ CI pipeline passed"
+"""
+
+[tasks.serve]
+description = "Start local DS API server"
+run = """
+  DS_CORS=${DS_CORS:-1} DS_TOKEN=${DS_TOKEN:-} \
+  go run ./cmd/ds serve --addr ${DS_ADDR:-127.0.0.1:7777} ${DS_TOKEN:+--token $DS_TOKEN}
+"""
+
+[tasks.serve-secure]
+description = "Start DS API with explicit token and CORS"
+run = """
+  if [ -z "${DS_TOKEN}" ]; then echo "Set DS_TOKEN"; exit 1; fi
+  DS_CORS=1 go run ./cmd/ds serve --addr ${DS_ADDR:-127.0.0.1:7777} --token ${DS_TOKEN}
+"""

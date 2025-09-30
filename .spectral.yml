@@ -1,0 +1,122 @@
+# Spectral OpenAPI Linting Configuration
+# Enforces API contract quality for ds-go
+
+extends: [[spectral:oas, all]]
+
+documentationUrl: https://github.com/verlyn13/ds-go/wiki/api-standards
+
+rules:
+  # Contract versioning enforcement
+  schema-version-required:
+    description: All responses must include schema_version field
+    severity: error
+    given: $.paths..responses..content..schema.properties
+    then:
+      field: schema_version
+      function: truthy
+    message: "Response must include schema_version field"
+
+  # Ensure proper response envelopes
+  array-response-wrapped:
+    description: Array responses must be wrapped in {schema_version, data} envelope
+    severity: error
+    given: $.paths..responses..content..schema
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          if:
+            properties:
+              data:
+                type: array
+          then:
+            required: [schema_version, data]
+    message: "Array responses must have schema_version and data fields"
+
+  # Operation requirements
+  operation-operationId:
+    severity: error
+    message: "Operation must have an operationId"
+
+  operation-description:
+    severity: warn
+    message: "Operation should have a description"
+
+  operation-tags:
+    severity: warn
+    message: "Operation should have at least one tag"
+
+  # Response requirements
+  operation-success-response:
+    severity: error
+    message: "Operations must define at least one success response"
+
+  operation-4xx-response:
+    severity: warn
+    message: "Operations should define 4xx error responses"
+
+  # Schema requirements
+  oas3-schema:
+    severity: error
+    message: "Schemas must be valid OpenAPI 3.0 schemas"
+
+  no-$ref-siblings:
+    severity: error
+    message: "$ref must not have siblings"
+
+  typed-enum:
+    severity: warn
+    message: "Enums should be typed"
+
+  # Path requirements
+  path-params:
+    severity: error
+    message: "Path parameters must be defined"
+
+  path-not-include-query:
+    severity: error
+    message: "Paths must not include query strings"
+
+  # Security
+  operation-security-defined:
+    severity: warn
+    given: $.paths[*][*]
+    then:
+      - field: security
+        function: truthy
+    message: "Operations should define security requirements"
+
+  # Examples
+  oas3-valid-media-example:
+    severity: warn
+    message: "Examples must be valid against the schema"
+
+  # DS-specific rules
+  ds-self-status-nowms:
+    description: Self-status must include nowMs field
+    severity: error
+    given: $.paths['/api/self-status'].get.responses['200'].content['application/json'].schema.properties
+    then:
+      field: nowMs
+      function: truthy
+    message: "Self-status must include nowMs field"
+
+  ds-discovery-timestamp:
+    description: Discovery services must include ts field
+    severity: error
+    given: $.paths['/api/discovery/services'].get.responses['200'].content['application/json'].schema.properties
+    then:
+      field: ts
+      function: truthy
+    message: "Discovery services must include ts field"
+
+# Overrides for specific paths
+overrides:
+  # SSE endpoints don't need schema_version wrapping
+  - files: ["**/*.yaml"]
+    rules:
+      schema-version-required: "off"
+    given:
+      - $.paths['/v1/status/sse']
+      - $.paths['/v1/fetch/sse']
+      - $.paths['/v1/status/stream']

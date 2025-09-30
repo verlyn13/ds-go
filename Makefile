@@ -1,4 +1,7 @@
-.PHONY: build install test clean run lint release
+.PHONY: build install test clean run lint release help
+
+# This Makefile provides backward compatibility while primarily using mise tasks
+# Run 'mise tasks' to see all available tasks with descriptions
 
 # Variables
 BINARY_NAME=ds
@@ -6,71 +9,93 @@ MAIN_PATH=./cmd/ds
 VERSION=$(shell git describe --tags --always --dirty)
 LDFLAGS=-ldflags "-s -w -X main.version=${VERSION}"
 
-# Build the binary
-build:
-	go build ${LDFLAGS} -o ${BINARY_NAME} ${MAIN_PATH}
+# Default target
+help:
+	@echo "ds-go Development Commands"
+	@echo ""
+	@echo "This project uses mise for task management. Available commands:"
+	@echo ""
+	@echo "  mise run build      - Build the binary"
+	@echo "  mise run install    - Build and install to /usr/local/bin"
+	@echo "  mise run test       - Run tests with coverage"
+	@echo "  mise run lint       - Run golangci-lint"
+	@echo "  mise run fmt        - Format code"
+	@echo "  mise run dev        - Run in development mode"
+	@echo "  mise run clean      - Clean build artifacts"
+	@echo "  mise run ci         - Run CI pipeline locally"
+	@echo "  mise run validate   - Validate system compliance"
+	@echo ""
+	@echo "Legacy Makefile targets are preserved for compatibility."
+	@echo "Run 'mise tasks' for complete list with descriptions."
 
-# Install locally
-install: build
-	sudo mv ${BINARY_NAME} /usr/local/bin/
+# Build the binary - delegates to mise
+build:
+	@mise run build
+
+# Install locally - delegates to mise
+install:
+	@mise run install
 
 # Run without installing
 run:
 	go run ${MAIN_PATH} $(ARGS)
 
-# Run tests
+# Run tests - delegates to mise
 test:
-	go test -v -race -cover ./...
+	@mise run test
 
-# Run benchmarks
+# Run benchmarks - delegates to mise
 bench:
-	go test -bench=. -benchmem ./...
+	@mise run bench
 
-# Lint with golangci-lint
+# Lint with golangci-lint - delegates to mise
 lint:
-	golangci-lint run ./...
+	@mise run lint
 
-# Format code
+# Format code - delegates to mise
 fmt:
-	go fmt ./...
-	gofumpt -w .
+	@mise run fmt
 
-# Clean build artifacts
+# Clean build artifacts - delegates to mise
 clean:
-	rm -f ${BINARY_NAME}
-	rm -rf dist/
+	@mise run clean
 
-# Create a release with goreleaser
+# Create a release with goreleaser - delegates to mise
 release:
-	goreleaser release --clean
+	@mise run release
 
-# Create a snapshot release (for testing)
+# Create a snapshot release - delegates to mise
 snapshot:
-	goreleaser release --snapshot --clean
+	@mise run snapshot
 
-# Update dependencies
+# Update dependencies - delegates to mise
 deps:
-	go get -u ./...
-	go mod tidy
+	@mise run deps
 
-# Run with race detector
+# Run with race detector - delegates to mise
 race:
-	go run -race ${MAIN_PATH} $(ARGS)
+	@mise run race $(ARGS)
 
-# Profile CPU
+# Profile CPU - delegates to mise
 profile-cpu:
-	go run -cpuprofile=cpu.prof ${MAIN_PATH} $(ARGS)
-	go tool pprof cpu.prof
+	@mise run profile-cpu $(ARGS)
 
-# Profile memory
+# Profile memory - delegates to mise
 profile-mem:
-	go run -memprofile=mem.prof ${MAIN_PATH} $(ARGS)
-	go tool pprof mem.prof
+	@mise run profile-mem $(ARGS)
 
-# Quick status check
-status: build
-	./$(BINARY_NAME) status
+# Quick status check - delegates to mise
+status:
+	@mise run status
 
-# Quick fetch
-fetch: build
-	./$(BINARY_NAME) fetch
+# Quick fetch - delegates to mise
+fetch:
+	@mise run fetch
+
+# Run CI pipeline locally
+ci:
+	@mise run ci
+
+# Validate system compliance
+validate:
+	@mise run validate

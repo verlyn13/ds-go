@@ -1,0 +1,50 @@
+# Example MCP config for ds local API
+
+[server]
+name = "ds"
+base_url = "http://127.0.0.1:7777"
+# Optionally set in environment: DS_TOKEN
+token_env = "DS_TOKEN"
+
+[tools.status]
+method = "GET"
+path = "/v1/status"
+query = ["account", "dirty", "path"]
+
+[tools.scan]
+method = "GET"
+path = "/v1/scan"
+query = ["path"]
+
+[tools.fetch]
+method = "GET"
+path = "/v1/fetch"
+query = ["account", "dirty", "path"]
+
+[tools.fetch_sse]
+method = "GET"
+path = "/v1/fetch/sse"
+query = ["account", "dirty", "path"]
+stream = "sse"
+
+[tools.organize_plan]
+method = "GET"
+path = "/v1/organize/plan"
+query = ["require_clean", "path"]
+
+[tools.organize_apply]
+method = "POST"
+path = "/v1/organize/apply"
+query = ["require_clean", "force", "dry_run", "path"]
+
+[tools.policy_check]
+method = "GET"
+path = "/v1/policy/check"
+query = ["file", "fail_on"]
+
+[tools.exec]
+method = "POST"
+path = "/v1/exec"
+query = ["account", "dirty", "timeout", "path"]
+body = "{ \"cmd\": \"<command>\" }"
+

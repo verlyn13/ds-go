@@ -1,0 +1,648 @@
+openapi: 3.0.3
+info:
+  title: ds-go Repository Manager API
+  description: |
+    API for managing Git repositories across multiple GitHub accounts.
+    Provides status monitoring, batch operations, and policy compliance.
+  version: 1.0.0
+  contact:
+    name: verlyn13
+    url: https://github.com/verlyn13/ds-go
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://127.0.0.1:7777/v1
+    description: Default local server
+  - url: http://{host}:{port}/v1
+    description: Custom server
+    variables:
+      host:
+        default: 127.0.0.1
+        description: Server hostname or IP
+      port:
+        default: '7777'
+        description: Server port
+
+tags:
+  - name: Discovery
+    description: API discovery and capabilities
+  - name: Status
+    description: Repository status operations
+  - name: Management
+    description: Repository management operations
+  - name: Policy
+    description: Policy and compliance checks
+  - name: Automation
+    description: Batch automation operations
+
+paths:
+  /capabilities:
+    get:
+      tags:
+        - Discovery
+      summary: Get API capabilities
+      description: Returns available endpoints, features, and API metadata
+      operationId: getCapabilities
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapabilitiesResponse'
+
+  /status:
+    get:
+      tags:
+        - Status
+      summary: Get repository status
+      description: Retrieve status of repositories with optional filters
+      operationId: getStatus
+      parameters:
+        - $ref: '#/components/parameters/DirtyFilter'
+        - $ref: '#/components/parameters/AccountFilter'
+        - $ref: '#/components/parameters/PathFilter'
+      responses:
+        '200':
+          description: Repository status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+
+  /status/stream:
+    get:
+      tags:
+        - Status
+      summary: Stream repository status (NDJSON)
+      description: Stream repository status as newline-delimited JSON
+      operationId: streamStatus
+      parameters:
+        - $ref: '#/components/parameters/DirtyFilter'
+        - $ref: '#/components/parameters/AccountFilter'
+      responses:
+        '200':
+          description: NDJSON stream
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+
+  /status/sse:
+    get:
+      tags:
+        - Status
+      summary: Stream repository status (SSE)
+      description: Stream repository status via Server-Sent Events
+      operationId: sseStatus
+      parameters:
+        - $ref: '#/components/parameters/DirtyFilter'
+        - $ref: '#/components/parameters/AccountFilter'
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /scan:
+    get:
+      tags:
+        - Management
+      summary: Scan for repositories
+      description: Scan filesystem for repositories and update index
+      operationId: scanRepositories
+      parameters:
+        - $ref: '#/components/parameters/PathFilter'
+      responses:
+        '200':
+          description: Scan results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanResponse'
+
+  /fetch:
+    get:
+      tags:
+        - Management
+      summary: Fetch remote information
+      description: Update remote information for repositories
+      operationId: fetchRemotes
+      parameters:
+        - $ref: '#/components/parameters/AccountFilter'
+        - $ref: '#/components/parameters/DirtyFilter'
+      responses:
+        '200':
+          description: Fetch results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchResponse'
+
+  /fetch/sse:
+    get:
+      tags:
+        - Management
+      summary: Stream fetch progress (SSE)
+      description: Stream fetch progress via Server-Sent Events
+      operationId: sseFetch
+      parameters:
+        - $ref: '#/components/parameters/AccountFilter'
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /organize/plan:
+    get:
+      tags:
+        - Management
+      summary: Plan repository organization
+      description: Preview repository organization changes without applying
+      operationId: planOrganize
+      parameters:
+        - name: require_clean
+          in: query
+          description: Only show moves for clean repositories
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Organization plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizePlanResponse'
+
+  /organize/apply:
+    post:
+      tags:
+        - Management
+      summary: Apply repository organization
+      description: Move repositories to proper directory structure
+      operationId: applyOrganize
+      parameters:
+        - name: require_clean
+          in: query
+          description: Abort if any repo has uncommitted changes
+          required: false
+          schema:
+            type: boolean
+        - name: force
+          in: query
+          description: Overwrite existing destinations
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - name: dry_run
+          in: query
+          description: Preview without making changes
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Organization results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizeApplyResponse'
+
+  /policy/check:
+    get:
+      tags:
+        - Policy
+      summary: Run policy compliance checks
+      description: Execute compliance checks from policy file
+      operationId: checkPolicy
+      parameters:
+        - name: file
+          in: query
+          description: Policy file path
+          required: false
+          schema:
+            type: string
+            default: '.project-compliance.yaml'
+        - name: fail_on
+          in: query
+          description: Severity threshold for failure
+          required: false
+          schema:
+            type: string
+            enum: [critical, high, medium, low]
+            default: critical
+      responses:
+        '200':
+          description: Policy check results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyResponse'
+
+  /exec:
+    post:
+      tags:
+        - Automation
+      summary: Execute command across repositories
+      description: Run a shell command in multiple repositories
+      operationId: execCommand
+      parameters:
+        - $ref: '#/components/parameters/AccountFilter'
+        - $ref: '#/components/parameters/DirtyFilter'
+        - name: timeout
+          in: query
+          description: Command timeout in seconds
+          required: false
+          schema:
+            type: integer
+            default: 30
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - cmd
+              properties:
+                cmd:
+                  type: string
+                  description: Command to execute
+                  example: "mise run lint"
+      responses:
+        '200':
+          description: Execution results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecResponse'
+    get:
+      tags:
+        - Automation
+      summary: Execute command across repositories (GET)
+      description: Alternative GET endpoint for command execution
+      operationId: execCommandGet
+      parameters:
+        - name: cmd
+          in: query
+          description: URL-encoded command to execute
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/AccountFilter'
+        - $ref: '#/components/parameters/DirtyFilter'
+        - name: timeout
+          in: query
+          description: Command timeout in seconds
+          required: false
+          schema:
+            type: integer
+            default: 30
+      responses:
+        '200':
+          description: Execution results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecResponse'
+
+components:
+  parameters:
+    AccountFilter:
+      name: account
+      in: query
+      description: Filter by account/organization
+      required: false
+      schema:
+        type: string
+        example: verlyn13
+
+    DirtyFilter:
+      name: dirty
+      in: query
+      description: Show only repositories with uncommitted changes
+      required: false
+      schema:
+        type: boolean
+
+    PathFilter:
+      name: path
+      in: query
+      description: Path to scan (defaults to configured base_dir)
+      required: false
+      schema:
+        type: string
+
+  schemas:
+    BaseResponse:
+      type: object
+      required:
+        - success
+        - timestamp
+      properties:
+        success:
+          type: boolean
+        error:
+          type: string
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+
+    Repository:
+      type: object
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+        account:
+          type: string
+        is_clean:
+          type: boolean
+        is_org:
+          type: boolean
+        uncommitted_files:
+          type: integer
+        untracked_files:
+          type: integer
+        branch:
+          type: string
+        ahead:
+          type: integer
+        behind:
+          type: integer
+        has_stash:
+          type: boolean
+        last_commit:
+          type: string
+          format: date-time
+        last_fetch:
+          type: string
+          format: date-time
+          nullable: true
+
+    CapabilitiesResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                version:
+                  type: string
+                endpoints:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      path:
+                        type: string
+                      method:
+                        type: string
+                      description:
+                        type: string
+                      parameters:
+                        type: array
+                        items:
+                          type: string
+                features:
+                  type: object
+                  properties:
+                    streaming:
+                      type: boolean
+                    policy:
+                      type: boolean
+                    exec:
+                      type: boolean
+                    organize:
+                      type: boolean
+
+    StatusResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                repositories:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Repository'
+                summary:
+                  type: object
+                  properties:
+                    total:
+                      type: integer
+                    clean:
+                      type: integer
+                    dirty:
+                      type: integer
+                    ahead:
+                      type: integer
+                    behind:
+                      type: integer
+
+    ScanResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                count:
+                  type: integer
+                duration_ms:
+                  type: integer
+                index_updated:
+                  type: boolean
+
+    FetchResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                results:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      repo:
+                        type: string
+                      success:
+                        type: boolean
+                      error:
+                        type: string
+                        nullable: true
+                summary:
+                  type: object
+                  properties:
+                    total:
+                      type: integer
+                    success:
+                      type: integer
+                    failed:
+                      type: integer
+
+    OrganizePlanResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                moves:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      account:
+                        type: string
+                      is_org:
+                        type: boolean
+                      old_path:
+                        type: string
+                      new_path:
+                        type: string
+                summary:
+                  type: object
+                  properties:
+                    total_moves:
+                      type: integer
+                    user_repos:
+                      type: integer
+                    org_repos:
+                      type: integer
+
+    OrganizeApplyResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                results:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      old_path:
+                        type: string
+                      new_path:
+                        type: string
+                      applied:
+                        type: boolean
+                      error:
+                        type: string
+                        nullable: true
+                summary:
+                  type: object
+                  properties:
+                    moved:
+                      type: integer
+                    failed:
+                      type: integer
+                    dry_run:
+                      type: boolean
+
+    PolicyResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                results:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      description:
+                        type: string
+                      severity:
+                        type: string
+                        enum: [critical, high, medium, low]
+                      passed:
+                        type: boolean
+                summary:
+                  type: object
+                  properties:
+                    total:
+                      type: integer
+                    passed:
+                      type: integer
+                    failed:
+                      type: integer
+                    by_severity:
+                      type: object
+                      additionalProperties:
+                        type: object
+                        properties:
+                          passed:
+                            type: integer
+                          failed:
+                            type: integer
+                failed_threshold:
+                  type: boolean
+
+    ExecResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                results:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      repo:
+                        type: string
+                      success:
+                        type: boolean
+                      stdout:
+                        type: string
+                      stderr:
+                        type: string
+                      exit_code:
+                        type: integer
+                      duration_ms:
+                        type: integer
+                summary:
+                  type: object
+                  properties:
+                    total:
+                      type: integer
+                    success:
+                      type: integer
+                    failed:
+                      type: integer
+                    total_duration_ms:
+                      type: integer

@@ -1,0 +1,236 @@
+# MCP (Model Context Protocol) Configuration for ds-go
+# This enables AI agents to interact with the ds-go repository manager
+
+version: 1
+servers:
+  ds-repo-manager:
+    # Server definition
+    name: "DS Repository Manager"
+    description: "Git repository management across multiple GitHub accounts"
+
+    # Launch configuration
+    command: "ds"
+    args: ["serve", "--addr", "127.0.0.1:7777"]
+
+    # Environment variables
+    env:
+      DS_CONFIG_PATH: "${HOME}/.config/ds/config.yaml"
+      DS_API_TIMEOUT: "60"
+      DS_WORKER_COUNT: "10"
+
+    # Health check
+    health_check:
+      endpoint: "http://127.0.0.1:7777/v1/capabilities"
+      interval: 30
+      timeout: 5
+
+    # Available tools/resources
+    tools:
+      - name: repository_status
+        description: "Get status of Git repositories"
+        endpoint: "/v1/status"
+        method: GET
+        parameters:
+          - name: dirty
+            type: boolean
+            description: "Show only dirty repositories"
+            required: false
+          - name: account
+            type: string
+            description: "Filter by account/organization"
+            required: false
+          - name: path
+            type: string
+            description: "Path to scan"
+            required: false
+
+      - name: scan_repositories
+        description: "Scan filesystem for repositories"
+        endpoint: "/v1/scan"
+        method: GET
+        parameters:
+          - name: path
+            type: string
+            description: "Path to scan"
+            required: false
+
+      - name: fetch_remotes
+        description: "Update remote information"
+        endpoint: "/v1/fetch"
+        method: GET
+        parameters:
+          - name: account
+            type: string
+            description: "Filter by account"
+            required: false
+
+      - name: organize_repos
+        description: "Organize repositories into proper structure"
+        endpoint: "/v1/organize/apply"
+        method: POST
+        parameters:
+          - name: require_clean
+            type: boolean
+            description: "Require clean repos"
+            required: false
+          - name: dry_run
+            type: boolean
+            description: "Preview without changes"
+            required: false
+
+      - name: check_policy
+        description: "Run policy compliance checks"
+        endpoint: "/v1/policy/check"
+        method: GET
+        parameters:
+          - name: file
+            type: string
+            description: "Policy file path"
+            required: false
+          - name: fail_on
+            type: string
+            description: "Severity threshold"
+            required: false
+            enum: ["critical", "high", "medium", "low"]
+
+      - name: execute_command
+        description: "Execute command across repositories"
+        endpoint: "/v1/exec"
+        method: POST
+        parameters:
+          - name: cmd
+            type: string
+            description: "Command to execute"
+            required: true
+          - name: account
+            type: string
+            description: "Filter by account"
+            required: false
+          - name: dirty
+            type: boolean
+            description: "Only dirty repos"
+            required: false
+          - name: timeout
+            type: integer
+            description: "Timeout in seconds"
+            required: false
+
+    # Resource definitions
+    resources:
+      - name: repository_list
+        description: "List of all tracked repositories"
+        endpoint: "/v1/status"
+        cache_ttl: 60
+
+      - name: organization_plan
+        description: "Repository organization plan"
+        endpoint: "/v1/organize/plan"
+        cache_ttl: 300
+
+      - name: policy_status
+        description: "Current policy compliance status"
+        endpoint: "/v1/policy/check"
+        cache_ttl: 300
+
+    # Streaming endpoints
+    streams:
+      - name: status_stream
+        description: "Real-time repository status"
+        endpoint: "/v1/status/sse"
+        type: sse
+
+      - name: fetch_progress
+        description: "Fetch operation progress"
+        endpoint: "/v1/fetch/sse"
+        type: sse
+
+    # Rate limiting
+    rate_limits:
+      requests_per_minute: 100
+      concurrent_operations: 10
+      command_timeout: 60
+
+    # Security
+    security:
+      bind_address: "127.0.0.1"
+      require_auth: false  # Set to true for production
+      auth_token_env: "DS_API_TOKEN"
+
+    # Observability
+    observability:
+      metrics_endpoint: "/v1/metrics"
+      logging_level: "info"
+      trace_enabled: false
+
+# Integration with system observability policy
+integration:
+  system_policy:
+    config_path: "~/Development/personal/system-setup-update/04-policies/policy-as-code.yaml"
+    observability:
+      allowed_roots:
+        - "~/Development/personal"
+        - "~/Development/work"
+        - "~/Development/business"
+      timeouts:
+        repo_seconds: 5
+        deps_seconds: 30
+
+# Tool capabilities for AI agents
+capabilities:
+  features:
+    - "repository_management"
+    - "batch_operations"
+    - "policy_compliance"
+    - "real_time_streaming"
+    - "command_execution"
+    - "organization_automation"
+
+  use_cases:
+    - name: "Daily Maintenance"
+      description: "Scan, fetch, and check status of all repositories"
+      tools: ["scan_repositories", "fetch_remotes", "repository_status"]
+
+    - name: "CI/CD Integration"
+      description: "Run tests, linting, and builds across projects"
+      tools: ["check_policy", "execute_command"]
+
+    - name: "Repository Cleanup"
+      description: "Identify and organize misplaced repositories"
+      tools: ["repository_status", "organize_repos"]
+
+    - name: "Compliance Monitoring"
+      description: "Check and enforce project policies"
+      tools: ["check_policy", "repository_status"]
+
+  examples:
+    - description: "Get all dirty repositories"
+      request:
+        tool: "repository_status"
+        parameters:
+          dirty: true
+
+    - description: "Run tests on personal projects"
+      request:
+        tool: "execute_command"
+        parameters:
+          cmd: "mise run test"
+          account: "verlyn13"
+
+    - description: "Check compliance"
+      request:
+        tool: "check_policy"
+        parameters:
+          fail_on: "critical"
+
+# Startup configuration
+startup:
+  auto_start: false  # Set to true to start with system
+  retry_on_failure: true
+  max_retries: 3
+  retry_delay_seconds: 10
+
+# Shutdown configuration
+shutdown:
+  graceful_timeout_seconds: 30
+  save_state: true
+  cleanup_temp_files: true

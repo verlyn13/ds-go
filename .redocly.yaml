@@ -1,0 +1,39 @@
+# Redocly OpenAPI Linting Configuration
+# For ds-go API contract validation
+
+extends:
+  - recommended
+
+rules:
+  # Enforce schema versioning
+  operation-description: warn
+  operation-operationId: error
+  operation-summary: error
+  tag-description: warn
+
+  # Response validation
+  operation-4xx-response: warn
+  operation-success-response: error
+
+  # Schema rules
+  no-ambiguous-paths: error
+  no-identical-paths: error
+  no-undefined-server-variable: error
+  path-declaration-must-exist: error
+
+  # Relaxed rules for our API
+  operation-2xx-response: warn
+  no-unresolved-refs: error
+  no-unused-components: warn
+
+# API-specific configurations
+apis:
+  main:
+    root: openapi.yaml
+    rules:
+      operation-operationId: error
+
+  internal:
+    root: internal/server/openapi.yaml
+    rules:
+      operation-operationId: warn  # Less strict for internal API

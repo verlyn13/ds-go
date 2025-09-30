@@ -1,0 +1,42 @@
+diff --git a/src/components/DsStatusCard.jsx b/src/components/DsStatusCard.jsx
+index 5555555..9999999 100644
+--- a/src/components/DsStatusCard.jsx
++++ b/src/components/DsStatusCard.jsx
+@@
+ import React from 'react';
+ import { ds } from '../lib/dsAdapter';
+ 
+ export default function DsStatusCard() {
+   const [state, setState] = React.useState({ status: 'Checking', info: null, health: null, error: null });
+   React.useEffect(() => {
+     (async () => {
+       try {
+         const [info, health] = await Promise.all([
+           ds.getInfo(),
+           ds.getHealth(),
+         ]);
+         setState({ status: 'Online', info, health, error: null });
+       } catch (e) {
+         setState({ status: 'Unavailable', info: null, health: null, error: String(e) });
+       }
+     })();
+   }, []);
+ 
+   const d = state.health || {};
+   return (
+     <div className="card">
+       <h3>DS Status</h3>
+       <p>Status: <strong>{state.status}</strong></p>
+       {state.info && state.health && (
+         <ul>
+           <li>URL: <code>{state.info.url}</code></li>
+           <li><a href={state.info.openapi} target="_blank" rel="noreferrer">OpenAPI</a></li>
+           <li><a href={state.info.capabilities} target="_blank" rel="noreferrer">Capabilities</a></li>
+           <li><a href={state.info.well_known} target="_blank" rel="noreferrer">Well-known</a></li>
+         </ul>
+       )}
+       {state.error && <pre className="error">{state.error}</pre>}
+     </div>
+   );
+ }
+
